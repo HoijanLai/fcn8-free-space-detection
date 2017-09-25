@@ -44,7 +44,7 @@ def load_vgg(sess, vgg_path):
     t5 = graph.get_tensor_by_name(vgg_layer7_out_tensor_name)
     return t1, t2, t3, t4, t5
 
-# tests.test_load_vgg(load_vgg, tf)
+tests.test_load_vgg(load_vgg, tf)
 
 
 def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
@@ -57,32 +57,32 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :return: The Tensor for the last layer of output
     """
     # layer7
-    part7 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, 1, padding = 'SAME', 
+    part7 = tf.layers.conv2d(vgg_layer7_out, 8, 1, 1, padding = 'SAME', 
                              kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-2))
 
-    part7_2x = tf.layers.conv2d_transpose(part7, num_classes, 4, 2, padding = 'SAME', 
+    part7_2x = tf.layers.conv2d_transpose(part7, 8, 4, 2, padding = 'SAME', 
                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-2))
     # fuse layer 4 and layer 7
-    part4 = tf.layers.conv2d(vgg_layer4_out, num_classes, 1, 1, padding = 'SAME',
+    part4 = tf.layers.conv2d(vgg_layer4_out, 8, 1, 1, padding = 'SAME',
                              kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-2))
 
     part_4_7 = tf.add(part7_2x, part4)
 
-    part_4_7_2x = tf.layers.conv2d_transpose(part_4_7, num_classes, 8, 2, padding = 'SAME', 
+    part_4_7_2x = tf.layers.conv2d_transpose(part_4_7, 8, 8, 2, padding = 'SAME', 
                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-2))   
 
     # fuse layer 3 with layer 4 + layer 7
-    part3 = tf.layers.conv2d(vgg_layer3_out, num_classes, 1, 1, padding = 'SAME',
+    part3 = tf.layers.conv2d(vgg_layer3_out, 8, 1, 1, padding = 'SAME',
                              kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-2))   
 
     part_3_4_7 = tf.add(part3, part_4_7_2x)
 
-    part_3_4_7_2x = tf.layers.conv2d_transpose(part_3_4_7, num_classes, 32, 8, padding = 'SAME',
+    part_3_4_7_8x = tf.layers.conv2d_transpose(part_3_4_7, num_classes, 32, 8, padding = 'SAME',
                                                kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-2))   
 
-    return part_3_4_7_2x 
+    return part_3_4_7_8x 
 
-# tests.test_layers(layers)
+tests.test_layers(layers)
 
 
 def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
@@ -98,7 +98,8 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=correct_label, logits=logits))
     train_op = tf.train.AdamOptimizer(learning_rate).minimize(cross_entropy_loss)
     return logits, train_op, cross_entropy_loss
-# tests.test_optimize(optimize)
+
+tests.test_optimize(optimize)
 
 
 def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,
@@ -123,10 +124,10 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
         for batch_images, batch_labels in tqdm(get_batches_fn(batch_size)):
             feed_dict = {input_image   : batch_images, 
                          correct_label : batch_labels,
-                         keep_prob     : 0.5}
+                         keep_prob     : 0.6}
             sess.run([train_op, cross_entropy_loss], feed_dict = feed_dict)
 
-# tests.test_train_nn(train_nn)
+tests.test_train_nn(train_nn)
 
 
 def run(batch_size = 16, epochs = 6, lr = 0.001):
