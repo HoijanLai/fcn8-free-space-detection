@@ -12,6 +12,7 @@ from urllib.request import urlretrieve
 from tqdm import tqdm
 
 
+
 class DLProgress(tqdm):
     last_block = 0
 
@@ -58,13 +59,42 @@ def maybe_download_pretrained_vgg(data_dir):
         os.remove(os.path.join(vgg_path, vgg_filename))
 
 
-def gen_batch_function(data_folder, image_shape):
+def gen_batch_function(data_folder, image_shape, aug_size=0.0, channel_shift=0.3):
     """
     Generate function to create batches of training data
     :param data_folder: Path to folder that contains all the datasets
     :param image_shape: Tuple - Shape of image
+    :param augment: float - the portion of augmented data
+    :param channel_shift: the probability to do channel_shift
     :return:
     """
+    kr_img = tf.contrib.keras.preprocessing.image
+    augment_ops = None
+    
+    # prepare some augmentation operations for later use
+    if aug_size > 0.0:
+        rotate = lambda img : kr_img.random_rotation(img, 8, channel_axis=2, fill_mode='reflect')
+        shift  = lambda img : kr_img.random_shift(img, 0.2, 0.2, channel_axis=2, fill_mode='reflect')
+        zoom   = lambda img : kr_img.random_zoom(img, (0.9, 1.3), channel_axis=2, fill_mode='reflect')
+        flip_h = lambda img : kr_img.flip_axis(img, 1)
+
+        augment_ops = [rotate, shift, zoom, flip_h]
+
+    def maybe_aug(image, gt_image, prob):
+        """
+        augment the image and mask pair with probability
+        :param image, gt_image - numpy array the non-augmented images
+        :param prob - float the probability       
+        :return aug_image, aug_gt_image - numpy array the processed images
+        """
+        if np.random.rand() > prob:
+            aug_op = np.random.choice(augment_ops) 
+            bind_img = np.dstack([image, gt_image])
+            aug_bind_img = aug_op(bind_img)
+            return aug_bind_img[:,:,:3], aug_bind_img[:,:,3:]
+        return image, gt_image
+
+
     def get_batches_fn(batch_size):
         """
         Create batches of training data
@@ -77,8 +107,14 @@ def gen_batch_function(data_folder, image_shape):
             for path in glob(os.path.join(data_folder, 'gt_image_2', '*_road_*.png'))}
         background_color = np.array([255, 0, 0])
 
+        data_size  = len(image_paths) 
+        target_size = int(data_size/(1-aug_size))
+
+        tiles = -((-target_size)//data_size) # how many times to tile 
+        image_paths = (image_paths*tiles)[:target_size]
         random.shuffle(image_paths)
-        for batch_i in range(0, len(image_paths), batch_size):
+        
+        for batch_i in range(0, target_size, batch_size):
             images = []
             gt_images = []
             for image_file in image_paths[batch_i:batch_i+batch_size]:
@@ -90,7 +126,11 @@ def gen_batch_function(data_folder, image_shape):
                 gt_bg = np.all(gt_image == background_color, axis=2)
                 gt_bg = gt_bg.reshape(*gt_bg.shape, 1)
                 gt_image = np.concatenate((gt_bg, np.invert(gt_bg)), axis=2)
-
+                        
+                image, gt_image = maybe_aug(image, gt_image, 1.0-aug_size)
+                
+                if np.random.rand() < channel_shift:
+                    image = kr_img.random_shear(image, 0.5) 
                 images.append(image)
                 gt_images.append(gt_image)
 
